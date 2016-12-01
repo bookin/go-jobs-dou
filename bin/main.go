@@ -12,7 +12,7 @@ import (
 	"strconv"
 )
 
-var companies map[int]string = make(map[int]string)
+var companies map[string]map[string]string = make(map[string]map[string]string)
 
 var cities map[int]string = map[int]string{
 	1: "Киев",
@@ -46,6 +46,7 @@ func main() {
 		data := [][]string{
 			[]string{"Position", job["position"]}, 
 			[]string{"Company Name", job["companyName"]},
+			[]string{"Money", job["money"]},
 			[]string{"Job", job["jobName"]},
 			[]string{"Description", job["description"]},
 			[]string{"Link", job["link"]},
@@ -83,7 +84,8 @@ func findCompanies(){
 	
 	page.Find(".company-name a").Each(func(i int, s *goquery.Selection) {
 		if i+1 <= MAX_POSTION {
-			companies[i+1]=s.Text()
+			href, _:=s.Attr("href")
+			companies[s.Text()]=map[string]string{"url":href, "position":strconv.Itoa(i+1)}
 		}		
     })
 }
@@ -102,21 +104,24 @@ func isKeysContains(keys string, text string)bool{
 func grab() []map[string]string{ 
 	var wg sync.WaitGroup
 	var jobs []map[string]string
-	for i := 1; i < len(companies); i++ {
+	for name, data := range companies{
 		wg.Add(1)
-		companyName := strings.ToLower(companies[i])		
-		go func(name string, pos int) { 
+		//companyName := strings.ToLower(name)
+		go func(name string, url string, pos string) { 
 			defer wg.Done()
-			x, err := goquery.NewDocument("https://jobs.dou.ua/companies/"+name+"/vacancies/")
+			url = strings.Replace(url, "/poll/", "/vacancies/", -1)
+			x, err := goquery.NewDocument(url)
 			if err == nil {
 				x.Find(".lt .l-vacancy").Each(func(i int, li *goquery.Selection) {
 					jobName := strings.TrimSpace(li.Find(".title a").Text())
 					description := strings.TrimSpace(li.Find(".sh-info").Text())
+					sum := strings.TrimSpace(li.Find(".salary").Text())
 					if(isKeysContains(KEYS, jobName) || isKeysContains(KEYS, description)){
 						link, _ := li.Find(".title a").Attr("href")
 						element := map[string]string{
-							"position":strconv.Itoa(pos),
+							"position":pos,
 							"jobName":jobName,
+							"money":sum,
 							"companyName": name,
 							"description":description,
 							"link":link,
@@ -124,12 +129,13 @@ func grab() []map[string]string{
 						jobs = append(jobs, element)
 					}
 				})
+			}else{
+				
 			}
 			fmt.Print(name+" ")
-		}(companyName, i)
+		}(name, data["url"], data["position"])
 		time.Sleep(100 * time.Millisecond)
 	}
-	//fmt.Println("Запущено потоков: ", i)
 	wg.Wait()
 	fmt.Print("\n")
 	return jobs
